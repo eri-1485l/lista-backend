@@ -1,6 +1,6 @@
-# Danmei Book List — Backend
+#Book List — Backend
 
-REST API built with FastAPI to manage a personal list of danmei novels (Chinese BL). Protected endpoints validate JWT tokens issued by Keycloak (OAuth2/OIDC).
+REST API built with FastAPI to manage a personal list of novels. Protected endpoints validate JWT tokens issued by Keycloak (OAuth2/OIDC).
 
 ## Features
 
