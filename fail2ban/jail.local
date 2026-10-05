@@ -1,0 +1,24 @@
+[DEFAULT]
+bantime = 600
+findtime = 10
+maxretry = 5
+bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = 1d
+ignoreip = 127.0.0.1/8 172.29.0.20
+
+[sshd]
+enabled = false
+
+[sshd-ddos]
+enabled = false
+
+[backend-auth]
+enabled = true
+port = 8001
+filter = backend-auth
+logpath = /var/log/backend-access.log
+maxretry = 5
+findtime = 10
+bantime = 600
+action = iptables-allports[name=backend-auth]
