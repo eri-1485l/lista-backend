@@ -1,14 +1,33 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_armor.middleware import ArmorMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware  # NUEVO
 from jose import jwt, JWTError
 from pydantic import BaseModel
 from typing import List
 import httpx
 
-app = FastAPI(title="Lista de Libros Danmei - Backend")
+app = FastAPI(
+    title="Lista de Libros - Backend",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
-# CORS: permitimos que el frontend (Vue en localhost:5173) hable con este backend
+app.add_middleware(ArmorMiddleware, preset="strict")
+
+# middleware para el header que falta
+class ExtraHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        return response
+
+app.add_middleware(ExtraHeadersMiddleware)
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:5174"],
@@ -17,14 +36,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración del realm de Keycloak
-KEYCLOAK_URL = "http://localhost:8081/realms/cybersecurity"
+# Configuración de Keycloak (separando interna y pública)
+KEYCLOAK_INTERNAL_URL = os.getenv("KEYCLOAK_INTERNAL_URL", "http://keycloak:8080")
+KEYCLOAK_PUBLIC_URL = os.getenv("KEYCLOAK_PUBLIC_URL", "http://localhost:8081")
+REALM = "cybersecurity"
 CLIENT_ID = "fastapi-api"
 
-# Esquema de seguridad: exige el header "Authorization: Bearer <token>"
+ISSUER = f"{KEYCLOAK_PUBLIC_URL}/realms/{REALM}"
+JWKS_URL = f"{KEYCLOAK_INTERNAL_URL}/realms/{REALM}/protocol/openid-connect/certs"
+
 security = HTTPBearer()
 
-# Modelo de datos para un libro
 class Book(BaseModel):
     id: int
     name: str
@@ -34,7 +56,6 @@ class BookCreate(BaseModel):
     name: str
     description: str
 
-# "Base de datos" en memoria con libros danmei
 books_db: List[Book] = [
     Book(id=1, name="Mo Dao Zu Shi", description="Género de cultivo y misterio"),
     Book(id=2, name="Tian Guan Ci Fu", description="Género de dioses y fantasmas"),
@@ -43,13 +64,11 @@ books_db: List[Book] = [
     Book(id=5, name="Qiang Jin Jiu", description="Género de intriga política"),
 ]
 
-# Función que valida el JWT contra las llaves públicas de Keycloak
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
         async with httpx.AsyncClient() as client:
-            jwks_url = f"{KEYCLOAK_URL}/protocol/openid-connect/certs"
-            response = await client.get(jwks_url)
+            response = await client.get(JWKS_URL)
             jwks = response.json()
 
         unverified_header = jwt.get_unverified_header(token)
@@ -72,7 +91,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             rsa_key,
             algorithms=["RS256"],
             audience=CLIENT_ID,
-            issuer=KEYCLOAK_URL,
+            issuer=ISSUER,
         )
         return payload
 
@@ -82,8 +101,6 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             detail=f"Token inválido: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-# ----- Endpoints -----
 
 @app.get("/health")
 async def health():
