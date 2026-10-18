@@ -4,7 +4,7 @@ set -e
 mkdir -p /var/log
 touch /var/log/backend-access.log
 
-# Rate limiting: máximo 100 conexiones nuevas por minuto al puerto 8001
+# Rate limiting en el puerto 8001 (el que expone Nginx)
 iptables -A INPUT -p tcp --dport 8001 -m conntrack --ctstate NEW \
     -m recent --set --name HTTPFLOOD_BACKEND
 iptables -A INPUT -p tcp --dport 8001 -m conntrack --ctstate NEW \
@@ -12,4 +12,10 @@ iptables -A INPUT -p tcp --dport 8001 -m conntrack --ctstate NEW \
 
 fail2ban-client -x start
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8001 --access-log 2>&1 | tee -a /var/log/backend-access.log
+# Uvicorn en el puerto interno 8002 (no accesible desde fuera)
+uvicorn app.main:app --host 127.0.0.1 --port 8002 --access-log 2>&1 | tee -a /var/log/backend-access.log &
+
+sleep 2
+
+# Nginx en primer plano
+exec nginx -g "daemon off;"
